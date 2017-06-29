@@ -136,7 +136,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
                 throw;
             }
 
-            // if the connection is not in the Connecting state here it means the user called DisposeAsync
+            // if the connection is not in the Connecting state here it mea ns the user called DisposeAsync
             if (Interlocked.CompareExchange(ref _connectionState, ConnectionState.Connected, ConnectionState.Connecting)
                 == ConnectionState.Connecting)
             {
@@ -162,11 +162,11 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
                     await _startTcs.Task;
                     await _receiveLoopTask;
-
                     _logger.LogDebug("Draining event queue");
-                    await _eventQueue.Drain();
 
-                    _httpClient.Dispose();
+                    await Task.WhenAny(
+                        _eventQueue.Drain().ContinueWith(task => _ = task.Exception, TaskContinuationOptions.NotOnRanToCompletion),
+                        Task.Delay(5000));
 
                     _logger.LogDebug("Raising Closed event");
 
