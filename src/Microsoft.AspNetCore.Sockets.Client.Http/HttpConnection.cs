@@ -180,8 +180,6 @@ namespace Microsoft.AspNetCore.Sockets.Client
             }
         }
 
-
-
         private async static Task<NegotiationResponse> Negotiate(Uri url, HttpClient httpClient, ILogger logger)
         {
             try
