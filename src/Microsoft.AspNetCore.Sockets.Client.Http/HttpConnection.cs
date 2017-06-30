@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Channels;
 using Microsoft.AspNetCore.Sockets.Client.Internal;
+using Microsoft.AspNetCore.Sockets.Http.Internal;
 using Microsoft.AspNetCore.Sockets.Internal;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -164,9 +165,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
                     await _receiveLoopTask;
                     _logger.LogDebug("Draining event queue");
 
-                    await Task.WhenAny(
-                        _eventQueue.Drain().ContinueWith(task => _ = task.Exception, TaskContinuationOptions.NotOnRanToCompletion),
-                        Task.Delay(5000));
+                    await Task.WhenAny(_eventQueue.Drain().NoThrow(), Task.Delay(5000));
 
                     _logger.LogDebug("Raising Closed event");
 
@@ -180,6 +179,8 @@ namespace Microsoft.AspNetCore.Sockets.Client
                 _receiveLoopTask = ReceiveAsync();
             }
         }
+
+
 
         private async static Task<NegotiationResponse> Negotiate(Uri url, HttpClient httpClient, ILogger logger)
         {
