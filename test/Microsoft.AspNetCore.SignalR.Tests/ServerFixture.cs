@@ -54,8 +54,19 @@ namespace Microsoft.AspNetCore.SignalR.Tests
         private void StartServer()
         {
             host = new WebHostBuilder()
-                .ConfigureLogging(builder => builder.AddProvider(new ForwardingLoggerProvider(_loggerFactory)))
-                .UseKestrel()
+                .ConfigureLogging(builder =>
+                {
+                    builder.SetMinimumLevel(LogLevel.Trace);
+                    builder.AddProvider(new ForwardingLoggerProvider(_loggerFactory))
+                    .AddFilter((c, l) =>
+                    {
+                        return c.Contains("Sockets") || c.Contains("SignalR");
+                    });
+                })
+                .UseKestrel(o => o.Listen(System.Net.IPAddress.Loopback, 3000, lo =>
+                {
+                    lo.UseConnectionLogging();
+                }))
                 .UseUrls(BaseUrl)
                 .UseContentRoot(Directory.GetCurrentDirectory())
                 .UseStartup<Startup>()

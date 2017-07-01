@@ -51,7 +51,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
             Running = Task.WhenAll(sendTask, receiveTask).ContinueWith(t =>
             {
-                _logger.TransportStopped(t.Exception?.InnerException);
+                _logger.TransportStopped("", t.Exception?.InnerException);
 
                 _application.Out.TryComplete(t.IsFaulted ? t.Exception.InnerException : null);
                 return t;
@@ -62,7 +62,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
         private async Task OpenConnection(Channel<byte[], SendMessage> application, Uri url, CancellationToken cancellationToken)
         {
-            _logger.StartReceive();
+            _logger.StartReceive("");
 
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
@@ -114,13 +114,13 @@ namespace Microsoft.AspNetCore.Sockets.Client
             {
                 _transportCts.Cancel();
                 stream.Dispose();
-                _logger.ReceiveStopped();
+                _logger.ReceiveStopped("");
             }
         }
 
         public async Task StopAsync()
         {
-            _logger.TransportStopping();
+            _logger.TransportStopping("");
             _transportCts.Cancel();
             _application.Out.TryComplete();
             await Running;

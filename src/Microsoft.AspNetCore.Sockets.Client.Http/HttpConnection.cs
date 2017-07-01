@@ -28,6 +28,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
         private TaskCompletionSource<object> _startTcs = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
         private TaskQueue _eventQueue = new TaskQueue();
         private readonly ITransportFactory _transportFactory;
+        private string _connectionId;
 
         private ReadableChannel<byte[]> Input => _transportChannel.In;
         private WritableChannel<SendMessage> Output => _transportChannel.Out;
@@ -111,23 +112,24 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
         private async Task StartAsyncInternal()
         {
-            _logger.HttpConnectionStarting();
+            _logger.HttpConnectionStarting(_connectionId);
 
             try
             {
                 var negotiationResponse = await Negotiate(Url, _httpClient, _logger);
+                _connectionId = negotiationResponse.ConnectionId;
 
                 // Connection is being stopped while start was in progress
                 if (_connectionState == ConnectionState.Disconnected)
                 {
-                    _logger.HttpConnectionClosed();
+                    _logger.HttpConnectionClosed(_connectionId);
                     return;
                 }
 
                 _transport = _transportFactory.CreateTransport(GetAvailableServerTransports(negotiationResponse));
 
                 var connectUrl = CreateConnectUrl(Url, negotiationResponse);
-                _logger.StartingTransport(_transport.GetType().Name, connectUrl);
+                _logger.StartingTransport(_connectionId, _transport.GetType().Name, connectUrl);
                 await StartTransport(connectUrl);
             }
             catch
@@ -142,7 +144,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
             {
                 var ignore = _eventQueue.Enqueue(() =>
                 {
-                    _logger.RaiseConnected();
+                    _logger.RaiseConnected(_connectionId);
 
                     Connected?.Invoke();
 
@@ -158,17 +160,17 @@ namespace Microsoft.AspNetCore.Sockets.Client
                     // to make sure that the message removed from the channel is processed before we drain the queue.
                     // There is a short window between we start the channel and assign the _receiveLoopTask a value.
                     // To make sure that _receiveLoopTask can be awaited (i.e. is not null) we need to await _startTask.
-                    _logger.ProcessRemainingMessages();
+                    _logger.ProcessRemainingMessages(_connectionId);
 
                     await _startTcs.Task;
                     await _receiveLoopTask;
 
-                    _logger.DrainEvents();
+                    _logger.DrainEvents(_connectionId);
                     await _eventQueue.Drain();
 
                     _httpClient.Dispose();
 
-                    _logger.RaiseClosed();
+                    _logger.RaiseClosed(_connectionId);
 
                     Closed?.Invoke(t.IsFaulted ? t.Exception.InnerException : null);
 
@@ -264,7 +266,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
             }
             catch (Exception ex)
             {
-                _logger.ErrorStartingTransport(_transport.GetType().Name, ex);
+                _logger.ErrorStartingTransport(_connectionId, _transport.GetType().Name, ex);
                 throw;
             }
         }
@@ -273,13 +275,13 @@ namespace Microsoft.AspNetCore.Sockets.Client
         {
             try
             {
-                _logger.HttpReceiveStarted();
+                _logger.HttpReceiveStarted(_connectionId);
 
                 while (await Input.WaitToReadAsync())
                 {
                     if (_connectionState != ConnectionState.Connected)
                     {
-                        _logger.SkipRaisingReceiveEvent();
+                        _logger.SkipRaisingReceiveEvent(_connectionId);
                         // drain
                         Input.TryRead(out _);
                         continue;
@@ -287,10 +289,10 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
                     if (Input.TryRead(out var buffer))
                     {
-                        _logger.ScheduleReceiveEvent();
+                        _logger.ScheduleReceiveEvent(_connectionId);
                         _ = _eventQueue.Enqueue(() =>
                         {
-                            _logger.RaiseReceiveEvent();
+                            _logger.RaiseReceiveEvent(_connectionId);
 
                             // Making a copy of the Received handler to ensure that its not null
                             // Can't use the ? operator because we specifically want to check if the handler is null
@@ -305,7 +307,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
                     }
                     else
                     {
-                        _logger.FailedReadingMessage();
+                        _logger.FailedReadingMessage(_connectionId);
                     }
                 }
 
@@ -314,10 +316,10 @@ namespace Microsoft.AspNetCore.Sockets.Client
             catch (Exception ex)
             {
                 Output.TryComplete(ex);
-                _logger.ErrorReceiving(ex);
+                _logger.ErrorReceiving(_connectionId, ex);
             }
 
-            _logger.EndReceive();
+            _logger.EndReceive(_connectionId);
         }
 
         public async Task SendAsync(byte[] data, CancellationToken cancellationToken = default(CancellationToken))
@@ -340,7 +342,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
             var sendTcs = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
             var message = new SendMessage(data, sendTcs);
 
-            _logger.SendingMessage();
+            _logger.SendingMessage(_connectionId);
 
             while (await Output.WaitToWriteAsync(cancellationToken))
             {
@@ -354,7 +356,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
         public async Task DisposeAsync()
         {
-            _logger.StoppingClient();
+            _logger.StoppingClient(_connectionId);
 
             if (Interlocked.Exchange(ref _connectionState, ConnectionState.Disconnected) == ConnectionState.Initial)
             {
@@ -379,15 +381,23 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
             if (_transport != null)
             {
+                _logger.LogTrace("{connectionId}: wait trans", _connectionId);
                 await _transport.StopAsync();
+                _logger.LogTrace("{connectionId}: stopped trans", _connectionId);
             }
 
             if (_receiveLoopTask != null)
             {
+                _logger.LogTrace("{connectionId}: wait receive", _connectionId);
                 await _receiveLoopTask;
+                _logger.LogTrace("{connectionId}: stopped receive", _connectionId);
             }
 
+            _logger.LogTrace("{connectionId}: calling httpclient.dispose", _connectionId);
+
             _httpClient.Dispose();
+
+            _logger.LogTrace("{connectionId}: done disposing httpconnection", _connectionId);
         }
 
         private class ConnectionState

@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging.Testing;
 using Xunit;
 using Xunit.Abstractions;
 
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
 namespace Microsoft.AspNetCore.SignalR.Tests
 {
     [CollectionDefinition(Name)]
@@ -143,7 +144,8 @@ namespace Microsoft.AspNetCore.SignalR.Tests
             get
             {
                 yield return new object[] { new string('A', 5 * 4096) };
-                yield return new object[] { new string('A', 1000 * 4096 + 32) };
+                for (int j = 0; j < 100; ++j)
+                    yield return new object[] { new string('A', j * 1 * 4096 + 32) };
             }
         }
 
@@ -152,41 +154,79 @@ namespace Microsoft.AspNetCore.SignalR.Tests
         [MemberData(nameof(MessageSizesData))]
         public async Task ConnectionCanSendAndReceiveDifferentMessageSizesWebSocketsTransport(string message)
         {
-            using (StartLog(out var loggerFactory, testName: $"ConnectionCanSendAndReceiveDifferentMessageSizesWebSocketsTransport_{message.Length}"))
+            //for (int j = 0; j < 1; ++j)
             {
-                var logger = loggerFactory.CreateLogger<EndToEndTests>();
-
-                var url = _serverFixture.BaseUrl + "/echo";
-                var connection = new HttpConnection(new Uri(url), loggerFactory);
-                try
+                var tasks = new List<Task>(5);
+                using (StartLog(out var loggerFactory, testName: $"ConnectionCanSendAndReceiveDifferentMessageSizesWebSocketsTransport_{message.Length}"))
                 {
-                    var receiveTcs = new TaskCompletionSource<byte[]>();
-                    connection.Received += data =>
+                    for (int i = 0; i < 5; ++i)
                     {
-                        logger.LogInformation("Received {length} byte message", data.Length);
-                        receiveTcs.TrySetResult(data);
-                        return Task.CompletedTask;
-                    };
+                        tasks.Add(Task.Run(async () =>
+                        {
+                            var logger = loggerFactory.CreateLogger<EndToEndTests>();
 
-                    logger.LogInformation("Starting connection to {url}", url);
-                    await connection.StartAsync().OrTimeout();
-                    logger.LogInformation("Started connection to {url}", url);
+                            var url = _serverFixture.BaseUrl + "/echo";
+                            var connection = new HttpConnection(new Uri(url), loggerFactory);
+                            try
+                            {
+                                var receiveTcs = new TaskCompletionSource<byte[]>();
+                                var closeTcs = new TaskCompletionSource<byte[]>();
+                                connection.Received += data =>
+                                {
+                                    logger.LogInformation("Received {length} byte message", data.Length);
+                                    receiveTcs.TrySetResult(data);
+                                    return Task.CompletedTask;
+                                };
+                                //connection.Closed += e =>
+                                //{
+                                //  logger.LogInformation("Connection closed");
+                                //if (e != null)
+                                //{
+                                //  closeTcs.TrySetException(e);
+                                //}
+                                //else
+                                //{
+                                //  closeTcs.TrySetResult(null);
+                                //  }
+                                //};
 
-                    var bytes = Encoding.UTF8.GetBytes(message);
-                    logger.LogInformation("Sending {length} byte message", bytes.Length);
-                    await connection.SendAsync(bytes).OrTimeout();
-                    logger.LogInformation("Sent message", bytes.Length);
+                                logger.LogInformation("Starting connection to {url}", url);
+                                await connection.StartAsync().OrTimeout();
+                                logger.LogInformation("Started connection to {url}", url);
 
-                    logger.LogInformation("Receiving message");
-                    var receivedData = await receiveTcs.Task.OrTimeout();
-                    Assert.Equal(message, Encoding.UTF8.GetString(receivedData));
-                    logger.LogInformation("Completed receive");
-                }
-                finally
-                {
-                    logger.LogInformation("Disposing Connection");
-                    await connection.DisposeAsync().OrTimeout();
-                    logger.LogInformation("Disposed Connection");
+                                var bytes = Encoding.UTF8.GetBytes(message);
+                                logger.LogInformation("Sending {length} byte message", bytes.Length);
+                                await connection.SendAsync(bytes).OrTimeout();
+                                logger.LogInformation("Sent message", bytes.Length);
+
+                                logger.LogInformation("Receiving message");
+                                var receivedData = await receiveTcs.Task.OrTimeout();
+                                Assert.Equal(message, Encoding.UTF8.GetString(receivedData));
+                                logger.LogInformation("Completed receive");
+
+                                //await closeTcs.Task.OrTimeout();
+                            }
+                            catch (Exception ex)
+                            {
+                                logger.LogInformation(ex, "Got exception");
+                                throw;
+                            }
+                            finally
+                            {
+                                logger.LogInformation("Disposing Connection");
+                                await connection.DisposeAsync().OrTimeout();
+                                logger.LogInformation("Disposed Connection");
+                            }
+                        }));
+                    }
+
+
+                    await Task.WhenAll(tasks);
+
+                    foreach (var t in tasks)
+                    {
+                        t.GetAwaiter().GetResult();
+                    }
                 }
             }
         }

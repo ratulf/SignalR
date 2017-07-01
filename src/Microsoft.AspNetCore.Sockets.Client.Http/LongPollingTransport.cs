@@ -47,7 +47,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
             Running = Task.WhenAll(_sender, _poller).ContinueWith(t =>
             {
-                _logger.TransportStopped(t.Exception?.InnerException);
+                _logger.TransportStopped("", t.Exception?.InnerException);
                 _application.Out.TryComplete(t.IsFaulted ? t.Exception.InnerException : null);
                 return t;
             }).Unwrap();
@@ -57,7 +57,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
         public async Task StopAsync()
         {
-            _logger.TransportStopping();
+            _logger.TransportStopping("");
 
             _transportCts.Cancel();
 
@@ -73,7 +73,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
         private async Task Poll(Uri pollUrl, CancellationToken cancellationToken)
         {
-            _logger.StartReceive();
+            _logger.StartReceive("");
             try
             {
                 while (!cancellationToken.IsCancellationRequested)
@@ -113,7 +113,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
             catch (OperationCanceledException)
             {
                 // transport is being closed
-                _logger.ReceiveCanceled();
+                _logger.ReceiveCanceled("");
             }
             catch (Exception ex)
             {
@@ -124,7 +124,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
             {
                 // Make sure the send loop is terminated
                 _transportCts.Cancel();
-                _logger.ReceiveStopped();
+                _logger.ReceiveStopped("");
             }
         }
     }

@@ -21,7 +21,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
 
         public static async Task SendMessages(Uri sendUrl, Channel<byte[], SendMessage> application, HttpClient httpClient, CancellationTokenSource transportCts, ILogger logger)
         {
-            logger.SendStarted();
+            logger.SendStarted("");
             IList<SendMessage> messages = null;
             try
             {
@@ -85,7 +85,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
                         message.SendResult?.TrySetCanceled();
                     }
                 }
-                logger.SendCanceled();
+                logger.SendCanceled("");
             }
             catch (Exception ex)
             {
@@ -106,7 +106,7 @@ namespace Microsoft.AspNetCore.Sockets.Client
                 transportCts.Cancel();
             }
 
-            logger.SendStopped();
+            logger.SendStopped("");
         }
     }
 }
