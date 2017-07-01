@@ -6,6 +6,7 @@ export { TransportType } from "./Transports"
 export { HttpConnection } from "./HttpConnection"
 import { IHubProtocol, MessageType, HubMessage, CompletionMessage, ResultMessage, InvocationMessage, NegotiationMessage } from "./IHubProtocol";
 import { JsonHubProtocol } from "./JsonHubProtocol";
+export { MessagePackHubProtocol } from "./MessagePackHubProtocol";
 import { TextMessageFormat } from "./Formatters"
 
 export class HubConnection {
@@ -16,8 +17,9 @@ export class HubConnection {
     private connectionClosedCallback: ConnectionClosed;
     private protocol: IHubProtocol;
 
-    constructor(connection: IConnection) {
+    constructor(connection: IConnection, protocol: IHubProtocol = new JsonHubProtocol()) {
         this.connection = connection;
+        this.protocol = protocol || new JsonHubProtocol();
         this.connection.onDataReceived = data => {
             this.onDataReceived(data);
         };
@@ -28,7 +30,6 @@ export class HubConnection {
         this.callbacks = new Map<string, (invocationEvent: CompletionMessage | ResultMessage) => void>();
         this.methods = new Map<string, (...args: any[]) => void>();
         this.id = 0;
-        this.protocol = new JsonHubProtocol();
     }
 
     private onDataReceived(data: any) {
